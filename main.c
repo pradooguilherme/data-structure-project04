@@ -158,7 +158,6 @@ void insertRegister(Register *registro)
     char delimitador = '#';
 
     record_size = calcula_tamanho(&registro[lastRecord]);
-
     fseek(data_file, 0, SEEK_END);
 
     fwrite(&record_size, sizeof(int), 1, data_file);
@@ -175,4 +174,8 @@ void insertRegister(Register *registro)
     fwrite(&registro[lastRecord].freq, sizeof(float), 1, data_file);
 
     fclose(data_file);
+}
+
+int main(){
+    return 1;
 }

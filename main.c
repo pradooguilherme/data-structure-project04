@@ -22,6 +22,79 @@ typedef struct Key
     int rrn[2];
 } Key;
 
+typedef struct RemoveKey
+{
+    char id_aluno[4];
+    char sigla_disc[4];
+} RemoveKey;
+
+void printKey(Key *k)
+{
+    if (k == NULL)
+    {
+        printf("Estrutura Key é nula.\n");
+        return;
+    }
+
+    printf("Keys:\n");
+    for (int i = 0; i < 2; i++)
+    {
+        printf("  key[%d]: %s\n", i, k->key[i]);
+    }
+
+    printf("RRNs:\n");
+    for (int i = 0; i < 2; i++)
+    {
+        printf("  rrn[%d]: %d\n", i, k->rrn[i]);
+    }
+}
+
+RemoveKey *read_remove_file()
+{
+    FILE *remove_file = fopen("remove.bin", "r+b");
+
+    RemoveKey *removeKeys = (RemoveKey *)malloc(100 * sizeof(RemoveKey));
+
+    if (removeKeys != NULL)
+    {
+
+        fread(removeKeys, sizeof(struct RemoveKey), 100, remove_file);
+
+        fclose(remove_file);
+
+        return removeKeys;
+    }
+
+    printf("Falha na alocação de memória para o registro de remoção.\n");
+
+    fclose(remove_file);
+
+    return NULL;
+}
+
+RemoveKey *read_busca_file()
+{
+    FILE *remove_file = fopen("busca.bin", "r+b");
+
+    RemoveKey *removeKeys = (RemoveKey *)malloc(100 * sizeof(RemoveKey));
+
+    if (removeKeys != NULL)
+    {
+
+        fread(removeKeys, sizeof(struct RemoveKey), 100, remove_file);
+
+        fclose(remove_file);
+
+        return removeKeys;
+    }
+
+    printf("Falha na alocação de memória para o registro de busca.\n");
+
+    fclose(remove_file);
+
+    return NULL;
+}
+
 Register *read_insert_file()
 {
     FILE *arquivo = fopen("insere.bin", "r+b");
@@ -55,6 +128,7 @@ FILE *iniciaLogFile()
         {
             int index = -1;
 
+            fwrite(&index, sizeof(int), 1, log_file);
             fwrite(&index, sizeof(int), 1, log_file);
             fwrite(&index, sizeof(int), 1, log_file);
 
@@ -134,21 +208,73 @@ FILE *iniciaHash()
 
 int getLastRecordInserted()
 {
-
     FILE *log_file = iniciaLogFile();
 
     int lastInserted;
 
     fread(&lastInserted, sizeof(int), 1, log_file);
-    fseek(log_file, 0, SEEK_SET);
 
     lastInserted++;
 
+    fseek(log_file, 0, SEEK_SET);
     fwrite(&lastInserted, sizeof(int), 1, log_file);
 
     fclose(log_file);
 
-    return lastInserted - 1;
+    return lastInserted;
+}
+
+int getLastRecordSearched()
+{
+    FILE *log_file = iniciaLogFile();
+
+    int lastSearched;
+
+    fseek(log_file, 8, SEEK_SET);
+    fread(&lastSearched, sizeof(int), 1, log_file);
+
+    lastSearched++;
+
+    fseek(log_file, 8, SEEK_SET);
+    fwrite(&lastSearched, sizeof(int), 1, log_file);
+
+    fclose(log_file);
+
+    return lastSearched;
+}
+
+int getLastRecordRemoved()
+{
+
+    FILE *log_file = iniciaLogFile();
+
+    int lastRemoved;
+
+    fseek(log_file, 4, SEEK_SET);
+    fread(&lastRemoved, sizeof(int), 1, log_file);
+
+    lastRemoved++;
+
+    fseek(log_file, 4, SEEK_SET);
+    fwrite(&lastRemoved, sizeof(int), 1, log_file);
+
+    fclose(log_file);
+
+    return lastRemoved;
+}
+
+int getAddressofInsertion()
+{
+
+    FILE *data_file = iniciaArquivo();
+
+    fseek(data_file, 0, SEEK_END);
+
+    int addressOfInsertion = ftell(data_file);
+
+    fclose(data_file);
+
+    return addressOfInsertion;
 }
 
 bool ifOperationFlag(FILE *data_file)
@@ -188,18 +314,11 @@ int calcula_tamanho(Register *registro)
     return tam;
 }
 
-void insertRegister(Register *registro)
+void insertRegister(Register *registro, int lastRecord)
 {
     FILE *data_file = iniciaArquivo();
 
-    int lastRecord = 0;
-
-    if (ifOperationFlag(data_file))
-    {
-
-        lastRecord = getLastRecordInserted();
-    }
-    else
+    if (!ifOperationFlag(data_file))
     {
         writeOperationFlag(data_file);
     }
@@ -243,7 +362,7 @@ Key *getKeysOnAdress(FILE *hash, int address)
         return NULL;
     }
 
-    fseek(hash, address, SEEK_SET);
+    fseek(hash, address * sizeof(Key), SEEK_SET);
     fread(registro, sizeof(Key), 1, hash);
 
     return registro;
@@ -270,6 +389,8 @@ int lookForPosition(FILE *hash_file, char key[7], int *address)
     int realAddress = hash(key, 0);
     int lastAddress = realAddress;
 
+    printf("Aviso: Endereço %d.\n", realAddress);
+
     Key *registro = getKeysOnAdress(hash_file, realAddress);
 
     int pos = avaiblePosition(registro);
@@ -277,6 +398,7 @@ int lookForPosition(FILE *hash_file, char key[7], int *address)
     if (pos != -1)
     {
         free(registro);
+        *address = realAddress;
         return pos;
     }
 
@@ -286,10 +408,10 @@ int lookForPosition(FILE *hash_file, char key[7], int *address)
 
     printf("Aviso: Houve colisão.\n");
 
+    printf("Aviso: Tentativa %d.\n", i);
+
     while (1)
     {
-        printf("Aviso: Tentativa %d.\n", i);
-
         realAddress = hash(key, i);
 
         if (realAddress == lastAddress)
@@ -307,8 +429,12 @@ int lookForPosition(FILE *hash_file, char key[7], int *address)
             return pos;
         }
 
+        printf("Aviso: Houve colisão.\n");
+
         free(registro);
         i++;
+
+        printf("Aviso: Tentativa %d.\n", i);
     }
 }
 
@@ -328,7 +454,7 @@ void insereHash(FILE *hash_file, char key[7], int rrn)
     strcpy(keyOnAdress->key[pos], key);
     keyOnAdress->rrn[pos] = rrn;
 
-    fseek(hash_file, address, hash_file);
+    fseek(hash_file, address * sizeof(Key), SEEK_SET);
     fwrite(keyOnAdress, sizeof(Key), 1, hash_file);
 
     printf("Chave %s inserida com sucesso no endereço %d.\n", key, address);
@@ -337,9 +463,215 @@ void insereHash(FILE *hash_file, char key[7], int rrn)
     return;
 }
 
+void removeHash(FILE *hash_file, char key[7])
+{
+    int realAddress = hash(key, 0);
+    int lastAddress = realAddress;
+
+    Key *registro = getKeysOnAdress(hash_file, realAddress);
+
+    int pos = 0;
+    int overflow = 1;
+
+    while (strcmp(registro->key[pos], key) != 0)
+    {
+
+        if (pos == 1)
+        {
+            pos = 0;
+            realAddress = hash(key, overflow);
+
+            if (realAddress == lastAddress)
+            {
+                printf("Aviso: Chave %s não encontrada.\n", key);
+                free(registro);
+                return;
+            }
+
+            registro = getKeysOnAdress(hash_file, realAddress);
+            overflow++;
+        }
+        else
+        {
+            pos++;
+        }
+    }
+
+    char removido = '#';
+
+    printf("Chave %s encontrada e removida com sucesso.\n", key);
+
+    strncpy(registro->key[pos], &removido, 1);
+
+    fseek(hash_file, realAddress * sizeof(Key), SEEK_SET);
+    fwrite(registro, sizeof(Key), 1, hash_file);
+
+    free(registro);
+}
+
+void print_rrn_data(int byteofset)
+{
+    FILE *data_file = iniciaArquivo();
+
+    fseek(data_file, byteofset, SEEK_SET);
+
+    int tamanho_registro = 0;
+    char delimitador = '#';
+
+    fread(&tamanho_registro, sizeof(int), 1, data_file);
+
+    char buffer[tamanho_registro + 1];
+    fread(buffer, sizeof(char), tamanho_registro - 9, data_file);
+
+    Register registro;
+
+    char *token = strtok(buffer, &delimitador);
+    if (token != NULL)
+        strncpy(registro.id_aluno, token, sizeof(registro.id_aluno) - 1);
+    registro.id_aluno[3] = '\0';
+
+    token = strtok(NULL, &delimitador);
+    if (token != NULL)
+        strncpy(registro.sigla_disc, token, sizeof(registro.sigla_disc) - 1);
+    registro.sigla_disc[3] = '\0';
+
+    token = strtok(NULL, &delimitador);
+    if (token != NULL)
+        strncpy(registro.nome_aluno, token, sizeof(registro.nome_aluno) - 1);
+
+    token = strtok(NULL, &delimitador);
+    if (token != NULL)
+        strncpy(registro.nome_disc, token, sizeof(registro.nome_disc) - 1);
+
+    fread(&registro.media, sizeof(float), 1, data_file);
+    fseek(data_file, 1, SEEK_CUR);
+    fread(&registro.freq, sizeof(float), 1, data_file);
+
+    printf("\nID Aluno: %s\n", registro.id_aluno);
+    printf("Sigla Disciplina: %s\n", registro.sigla_disc);
+    printf("Nome do Aluno: %s\n", registro.nome_aluno);
+    printf("Nome da Disciplina: %s\n", registro.nome_disc);
+    printf("Média: %.2f\n", registro.media);
+    printf("Frequência: %.2f\n", registro.freq);
+
+    fclose(data_file);
+}
+
+int buscaHash(FILE *hash_file, char key[7])
+{
+    int realAddress = hash(key, 0);
+    int lastAddress = realAddress;
+
+    Key *registro = getKeysOnAdress(hash_file, realAddress);
+
+    int pos = 0;
+    int overflow = 1;
+
+    while (strcmp(registro->key[pos], key) != 0)
+    {
+        if (pos == 1)
+        {
+            pos = 0;
+            realAddress = hash(key, overflow);
+
+            if (realAddress == lastAddress)
+            {
+                printf("Aviso: Chave %s não encontrada.\n", key);
+                free(registro);
+                return -1;
+            }
+
+            registro = getKeysOnAdress(hash_file, realAddress);
+            overflow++;
+        }
+        else
+        {
+            pos++;
+        }
+    }
+
+    printf("Chave %s encontrada, endereço %d, %d acesso(s).\n", key, realAddress, overflow);
+
+    return registro->rrn[pos];
+
+    free(registro);
+}
+
 int main()
 {
-    FILE *hash = iniciaHash();
+    Register *registros = read_insert_file();
+    RemoveKey *removeKeys = read_remove_file();
+    RemoveKey *buscaKeys = read_busca_file();
 
-    fclose(hash);
+    int resposta;
+
+    bool flag = true;
+
+    while (flag)
+    {
+        printf("\nO que deseja fazer?\n[1]Inserção\n[2]Remoção\n[3]Busca\n[4]Remoção dos Arquivos\n[5]Sair do programa\nR: ");
+        scanf("%d", &resposta);
+
+        if (resposta == 1)
+        {
+            FILE *hash = iniciaHash();
+
+            char key[7];
+
+            int i = getLastRecordInserted();
+            int byteOfSet = getAddressofInsertion();
+
+            snprintf(key, sizeof(key), "%s%s", registros[i].id_aluno, registros[i].sigla_disc);
+
+            insereHash(hash, key, byteOfSet);
+            insertRegister(registros, i);
+
+            fclose(hash);
+        }
+
+        if (resposta == 2)
+        {
+            FILE *hash_file = iniciaHash();
+
+            char key[7];
+            int lastRemoved = getLastRecordRemoved();
+
+            snprintf(key, sizeof(key), "%s%s", removeKeys[lastRemoved].id_aluno, removeKeys[lastRemoved].sigla_disc);
+
+            removeHash(hash_file, key);
+
+            fclose(hash_file);
+        }
+
+        if (resposta == 3)
+        {
+            FILE *hash_file = iniciaHash();
+
+            char key[7];
+            int lastSearched = getLastRecordSearched();
+
+            snprintf(key, sizeof(key), "%s%s", buscaKeys[lastSearched].id_aluno, buscaKeys[lastSearched].sigla_disc);
+
+            int resultado = buscaHash(hash_file, key);
+
+            if (resultado != -1)
+            {
+                print_rrn_data(resultado);
+            }
+
+            fclose(hash_file);
+        }
+
+        if (resposta == 4)
+        {
+            remove("dados.bin");
+            remove("log_file.bin");
+            remove("hash.bin");
+        }
+
+        if (resposta == 5)
+        {
+            flag = false;
+        }
+    }
 }

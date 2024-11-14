@@ -371,12 +371,12 @@ Key *getKeysOnAdress(FILE *hash, int address)
 int avaiblePosition(Key *registro)
 {
 
-    if (strcmp(registro->key[0], "#") == 0)
+    if (registro->key[0][0] == '#')
     {
         return 0;
     }
 
-    if (strcmp(registro->key[1], "#") == 0)
+    if (registro->key[1][0] == '#')
     {
         return 1;
     }
@@ -623,8 +623,16 @@ int main()
 
             snprintf(key, sizeof(key), "%s%s", registros[i].id_aluno, registros[i].sigla_disc);
 
-            insereHash(hash, key, byteOfSet);
-            insertRegister(registros, i);
+            int ifduplicada = buscaHash(hash, key);
+
+            if (ifduplicada == -1)
+            {
+                insereHash(hash, key, byteOfSet);
+                insertRegister(registros, i);
+            }else{
+
+                printf("Aviso: Chave duplicada.\n");
+            }
 
             fclose(hash);
         }
